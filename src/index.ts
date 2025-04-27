@@ -3,8 +3,8 @@ import { isValid } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
 import type {
-	DateFormats,
 	LambdaResponse,
+	NoteProperties,
 	NotionConfig,
 	ScheduledEvent,
 } from "./types";
@@ -20,51 +20,40 @@ const notionConfig: NotionConfig = {
 	databaseId: process.env.DATABASE_ID ?? "",
 };
 
-// Notionクライアントの初期化
-const notion = new Client({ auth: notionConfig.apiKey });
+const createNotionClient = (config: NotionConfig): Client => {
+	return new Client({ auth: config.apiKey });
+};
 
-/**
- * 構造化ログを出力する
- * @param level ログレベル (info, error, warn)
- * @param message ログメッセージ
- * @param meta 追加情報 (オプション)
- */
-const log = (
+// Notionクライアントの初期化
+const notion = createNotionClient(notionConfig);
+
+const structuredLog = (
 	level: "info" | "error" | "warn",
 	message: string,
-	meta?: Record<string, unknown>,
+	additionalInfo?: Record<string, unknown>,
 ) => {
 	console.log(
 		JSON.stringify({
 			timestamp: new Date().toISOString(),
 			level,
 			message,
-			...(meta && { meta }),
+			...(additionalInfo && { additionalInfo }),
 		}),
 	);
 };
 
-/**
- * 日本時間の現在の日付フォーマットを取得する
- * @returns フォーマット済みの日付
- */
-const getJapanDateFormats = (): DateFormats => {
+const getNoteProperties = (): NoteProperties => {
 	const now = new Date();
 	if (!isValid(now)) {
 		throw new Error("Invalid date");
 	}
 
 	return {
-		yyyyMMdd: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd"),
-		yyyyMMddDdd: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd EEE"),
+		name: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd EEE"),
+		date: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd"),
 	};
 };
 
-/**
- * Notionにデイリーノートが存在するか確認
- * @param title ノートのタイトル
- * @returns 存在するかどうか
- */
 const checkNoteExists = async (title: string): Promise<boolean> => {
 	try {
 		const response = await notion.databases.query({
@@ -79,17 +68,12 @@ const checkNoteExists = async (title: string): Promise<boolean> => {
 
 		return response.results.length > 0;
 	} catch (error) {
-		log("error", "Error checking note existence", { error });
+		structuredLog("error", "Error checking note existence", { error });
 		throw error;
 	}
 };
 
-/**
- * Notionにデイリーノートを作成
- * @param dateFormats 日付フォーマット
- * @returns 作成結果
- */
-const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
+const createDailyNote = async (note: NoteProperties): Promise<void> => {
 	try {
 		await notion.pages.create({
 			parent: {
@@ -100,7 +84,7 @@ const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
 					title: [
 						{
 							text: {
-								content: dateFormats.yyyyMMddDdd,
+								content: note.name,
 							},
 						},
 					],
@@ -108,54 +92,69 @@ const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
 				Date: {
 					type: "date",
 					date: {
-						start: dateFormats.yyyyMMdd,
+						start: note.date,
 						end: null,
 					},
 				},
 			},
 		});
-		log("info", `Created successfully: ${dateFormats.yyyyMMddDdd}`);
+		structuredLog("info", `Created successfully: ${note.name}`);
 	} catch (error) {
-		log("error", "Error creating daily note:", { error });
+		structuredLog("error", "Error creating daily note:", { error });
 		throw error;
 	}
 };
 
-/**
- * メイン処理
- */
-const main = async (): Promise<void> => {
-	// 設定のバリデーション
-	if (!notionConfig.apiKey || !notionConfig.databaseId) {
-		throw new Error(
-			"Missing required environment variables: NOTION_API_KEY or DATABASE_ID",
-		);
+const validateEnv = (): void => {
+	if (!process.env.NOTION_API_KEY) {
+		throw new Error("Missing environment variable: NOTION_API_KEY");
 	}
+	if (!process.env.DATABASE_ID) {
+		throw new Error("Missing environment variable: DATABASE_ID");
+	}
+	if (!process.env.AWS_REGION) {
+		throw new Error("Missing environment variable: AWS_REGION");
+	}
+	if (!process.env.AWS_ACCESS_KEY_ID) {
+		throw new Error("Missing environment variable: AWS_ACCESS_KEY_ID");
+	}
+	if (!process.env.AWS_SECRET_ACCESS_KEY) {
+		throw new Error("Missing environment variable: AWS_SECRET_ACCESS_KEY");
+	}
+};
 
-	// 日付フォーマットの取得
-	const dateFormats = getJapanDateFormats();
-
-	// すでに存在するかチェック
-	const exists = await checkNoteExists(dateFormats.yyyyMMddDdd);
+const executeDailyNoteCreation = async (): Promise<void> => {
+	const note = getNoteProperties();
+	const exists = await checkNoteExists(note.name);
 
 	if (exists) {
-		log("info", `Already exists: ${dateFormats.yyyyMMddDdd}`);
+		structuredLog("info", `Note already exists: ${note.name}`);
 		return;
 	}
 
-	// 作成処理
-	await createDailyNote(dateFormats);
+	await createDailyNote(note);
+};
+
+const main = async (): Promise<void> => {
+	validateEnv();
+	await executeDailyNoteCreation();
+};
+
+const run = async (): Promise<void> => {
+	main()
+		.then(() => structuredLog("info", "Main process completed"))
+		.catch((error) => {
+			structuredLog("error", "Main process execution error:", { error });
+			process.exit(1);
+		});
 };
 
 /**
  * ローカル実行用
  */
-main()
-	.then(() => log("info", "Main process completed"))
-	.catch((error) => {
-		log("error", "Main process execution error:", { error });
-		process.exit(1);
-	});
+if (require.main === module) {
+	run();
+}
 
 /**
  * Lambda関数ハンドラー
@@ -163,13 +162,13 @@ main()
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
 	try {
 		await main();
-		log("info", "Lambda function executed successfully");
+		structuredLog("info", "Lambda function executed successfully");
 		return {
 			statusCode: 200,
 			body: JSON.stringify({ message: "Daily note created successfully" }),
 		};
 	} catch (error) {
-		log("error", "Lambda function execution error:", { error });
+		structuredLog("error", "Lambda function execution error:", { error });
 		return {
 			statusCode: 500,
 			body: JSON.stringify({ error: "Daily note creation failed" }),

@@ -23,8 +23,7 @@ export interface LambdaResponse {
 	body: string;
 }
 
-// 日付フォーマット用の型
-export interface DateFormats {
-	yyyyMMdd: string;
-	yyyyMMddDdd: string;
+export interface NoteProperties {
+	name: string;
+	date: string;
 }
