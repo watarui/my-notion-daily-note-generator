@@ -87,7 +87,7 @@ data "archive_file" "lambda_package" {
 # Lambda関数のビルド
 resource "null_resource" "build_lambda" {
   triggers = {
-    always_run = "${timestamp()}"
+    source_hash = filesha256("${path.module}/../src")
   }
 
   provisioner "local-exec" {
