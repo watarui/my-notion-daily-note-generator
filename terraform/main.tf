@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "${var.project_name}/terraform.tfstate"
-    region         = var.aws_region
+    bucket         = "my-terraform-state-for-my-notion-daily-generator"
+    key            = "my-notion-daily-note-generator/terraform.tfstate"
+    region         = "ap-northeast-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true
   }
@@ -13,7 +13,7 @@ terraform {
     }
     archive = {
       source  = "hashicorp/archive"
-      version = "~> 3.0"
+      version = "~> 2.0"
     }
   }
   required_version = ">= 1.0"
