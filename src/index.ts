@@ -1,5 +1,5 @@
 import { Client } from "@notionhq/client";
-import { format, isValid } from "date-fns";
+import { isValid } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
 import type {
@@ -129,14 +129,12 @@ const main = async (): Promise<void> => {
 /**
  * ローカル実行用
  */
-if (process.argv[1] === import.meta.url) {
-	main()
-		.then(() => console.log("処理完了"))
-		.catch((error) => {
-			console.error("エラー発生:", error);
-			process.exit(1);
-		});
-}
+main()
+	.then(() => console.log("処理完了"))
+	.catch((error) => {
+		console.error("エラー発生:", error);
+		process.exit(1);
+	});
 
 /**
  * Lambda関数ハンドラー
