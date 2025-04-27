@@ -25,7 +25,7 @@ variable "notion_database_id" {
 variable "schedule_expression" {
   description = "Schedule expression for the EventBridge rule"
   type        = string
-  default     = "cron(8 15 * * ? *)" # 毎日 0:08 JST (15:08 UTC)
+  default     = "cron(1 15 * * ? *)" # 毎日 0:01 JST (15:01 UTC)
 }
 
 variable "lambda_timeout" {

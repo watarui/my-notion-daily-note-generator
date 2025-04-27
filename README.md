@@ -7,17 +7,17 @@ cp .env.example .env
 vi .env
 ```
 
-To create AWS resources:
-
-```bash
-terraform init
-terraform apply -auto-approve
-```
-
 To install dependencies:
 
 ```bash
 bun install
+```
+
+To create AWS resources:
+
+```bash
+bun run deploy:init
+bun run deploy
 ```
 
 To run in local:
