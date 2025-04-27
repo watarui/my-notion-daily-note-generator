@@ -2,6 +2,7 @@ import { Client } from "@notionhq/client";
 import { isValid } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 import type {
 	LambdaResponse,
 	NoteProperties,
@@ -27,13 +28,19 @@ const createNotionClient = (config: NotionConfig): Client => {
 // Notionクライアントの初期化
 const notion = createNotionClient(notionConfig);
 
+const generateTraceId = (): string => {
+	return uuidv4();
+};
+
 const structuredLog = (
 	level: "info" | "error" | "warn",
 	message: string,
 	additionalInfo?: Record<string, unknown>,
+	traceId?: string,
 ) => {
 	console.log(
 		JSON.stringify({
+			traceId,
 			timestamp: new Date().toISOString(),
 			level,
 			message,
@@ -73,7 +80,10 @@ const checkNoteExists = async (title: string): Promise<boolean> => {
 	}
 };
 
-const createDailyNote = async (note: NoteProperties): Promise<void> => {
+const createDailyNote = async (
+	note: NoteProperties,
+	traceId: string,
+): Promise<void> => {
 	try {
 		await notion.pages.create({
 			parent: {
@@ -98,9 +108,14 @@ const createDailyNote = async (note: NoteProperties): Promise<void> => {
 				},
 			},
 		});
-		structuredLog("info", `Created successfully: ${note.name}`);
+		structuredLog(
+			"info",
+			`Created successfully: ${note.name}`,
+			undefined,
+			traceId,
+		);
 	} catch (error) {
-		structuredLog("error", "Error creating daily note:", { error });
+		structuredLog("error", "Error creating daily note:", { error }, traceId);
 		throw error;
 	}
 };
@@ -123,28 +138,40 @@ const validateEnv = (): void => {
 	}
 };
 
-const executeDailyNoteCreation = async (): Promise<void> => {
+const executeDailyNoteCreation = async (traceId: string): Promise<void> => {
 	const note = getNoteProperties();
 	const exists = await checkNoteExists(note.name);
 
 	if (exists) {
-		structuredLog("info", `Note already exists: ${note.name}`);
+		structuredLog(
+			"info",
+			`Note already exists: ${note.name}`,
+			undefined,
+			traceId,
+		);
 		return;
 	}
 
-	await createDailyNote(note);
+	await createDailyNote(note, traceId);
 };
 
-const main = async (): Promise<void> => {
+const main = async (traceId: string): Promise<void> => {
 	validateEnv();
-	await executeDailyNoteCreation();
+	await executeDailyNoteCreation(traceId);
 };
 
-const run = async (): Promise<void> => {
-	main()
-		.then(() => structuredLog("info", "Main process completed"))
+const run = async (traceId: string): Promise<void> => {
+	main(traceId)
+		.then(() =>
+			structuredLog("info", "Main process completed", undefined, traceId),
+		)
 		.catch((error) => {
-			structuredLog("error", "Main process execution error:", { error });
+			structuredLog(
+				"error",
+				"Main process execution error:",
+				{ error },
+				traceId,
+			);
 			process.exit(1);
 		});
 };
@@ -153,22 +180,34 @@ const run = async (): Promise<void> => {
  * ローカル実行用
  */
 if (require.main === module) {
-	run();
+	const traceId = generateTraceId();
+	run(traceId);
 }
 
 /**
  * Lambda関数ハンドラー
  */
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
+	const traceId = generateTraceId();
 	try {
-		await main();
-		structuredLog("info", "Lambda function executed successfully");
+		await main(traceId);
+		structuredLog(
+			"info",
+			"Lambda function executed successfully",
+			undefined,
+			traceId,
+		);
 		return {
 			statusCode: 200,
 			body: JSON.stringify({ message: "Daily note created successfully" }),
 		};
 	} catch (error) {
-		structuredLog("error", "Lambda function execution error:", { error });
+		structuredLog(
+			"error",
+			"Lambda function execution error:",
+			{ error },
+			traceId,
+		);
 		return {
 			statusCode: 500,
 			body: JSON.stringify({ error: "Daily note creation failed" }),
