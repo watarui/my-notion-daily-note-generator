@@ -24,6 +24,27 @@ const notionConfig: NotionConfig = {
 const notion = new Client({ auth: notionConfig.apiKey });
 
 /**
+ * 構造化ログを出力する
+ * @param level ログレベル (info, error, warn)
+ * @param message ログメッセージ
+ * @param meta 追加情報 (オプション)
+ */
+const log = (
+	level: "info" | "error" | "warn",
+	message: string,
+	meta?: Record<string, unknown>,
+) => {
+	console.log(
+		JSON.stringify({
+			timestamp: new Date().toISOString(),
+			level,
+			message,
+			...(meta && { meta }),
+		}),
+	);
+};
+
+/**
  * 日本時間の現在の日付フォーマットを取得する
  * @returns フォーマット済みの日付
  */
@@ -58,7 +79,7 @@ const checkNoteExists = async (title: string): Promise<boolean> => {
 
 		return response.results.length > 0;
 	} catch (error) {
-		console.error("Error checking note existence:", error);
+		log("error", "Error checking note existence", { error });
 		throw error;
 	}
 };
@@ -93,9 +114,9 @@ const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
 				},
 			},
 		});
-		console.log(`作成成功: ${dateFormats.yyyyMMddDdd}`);
+		log("info", `作成成功: ${dateFormats.yyyyMMddDdd}`);
 	} catch (error) {
-		console.error("Error creating daily note:", error);
+		log("error", "Error creating daily note:", { error });
 		throw error;
 	}
 };
@@ -118,7 +139,7 @@ const main = async (): Promise<void> => {
 	const exists = await checkNoteExists(dateFormats.yyyyMMddDdd);
 
 	if (exists) {
-		console.log(`すでに存在しています: ${dateFormats.yyyyMMddDdd}`);
+		log("info", `すでに存在しています: ${dateFormats.yyyyMMddDdd}`);
 		return;
 	}
 
@@ -132,7 +153,7 @@ const main = async (): Promise<void> => {
 main()
 	.then(() => console.log("処理完了"))
 	.catch((error) => {
-		console.error("エラー発生:", error);
+		log("error", "メイン処理エラー:", { error });
 		process.exit(1);
 	});
 
@@ -147,7 +168,7 @@ export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
 			body: JSON.stringify({ message: "デイリーノート作成成功" }),
 		};
 	} catch (error) {
-		console.error("Lambda実行エラー:", error);
+		log("error", "Lambda実行エラー:", { error });
 		return {
 			statusCode: 500,
 			body: JSON.stringify({ error: "デイリーノート作成失敗" }),
