@@ -1,10 +1,9 @@
 {
 	"name": "my-notion-daily-note-generator",
 	"module": "src/index.ts",
-	"type": "module",
 	"scripts": {
 		"start": "bun run src/index.ts",
-		"build": "bun build src/index.ts --outdir ./dist --target node",
+		"build": "bun build src/index.ts --outdir ./dist --target node --format cjs",
 		"format": "biome format --write .",
 		"lint": "biome lint .",
 		"check": "biome check --apply .",
