@@ -4,49 +4,33 @@ import { formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 import type {
+	Context,
 	LambdaResponse,
 	NoteProperties,
 	NotionConfig,
 	ScheduledEvent,
 } from "./types";
+import { getEnv, validateEnv } from "./utils/env";
+import { structuredLog } from "./utils/logger";
+import { createPage, queryDatabase } from "./utils/notion";
 
 // 開発環境では.envファイルから環境変数を読み込む
-if (process.env.NODE_ENV !== "production") {
+if (getEnv("NODE_ENV") !== "production") {
 	config();
 }
 
 // Notionの設定
 const notionConfig: NotionConfig = {
-	apiKey: process.env.NOTION_API_KEY ?? "",
-	databaseId: process.env.DATABASE_ID ?? "",
+	apiKey: getEnv("NOTION_API_KEY"),
+	databaseId: getEnv("DATABASE_ID"),
 };
 
 const createNotionClient = (config: NotionConfig): Client => {
 	return new Client({ auth: config.apiKey });
 };
 
-// Notionクライアントの初期化
-const notion = createNotionClient(notionConfig);
-
 const generateTraceId = (): string => {
 	return uuidv4().replace(/-/g, "");
-};
-
-const structuredLog = (
-	level: "info" | "error" | "warn",
-	message: string,
-	additionalInfo?: Record<string, unknown>,
-	traceId?: string,
-) => {
-	console.log(
-		JSON.stringify({
-			traceId,
-			timestamp: new Date().toISOString(),
-			level,
-			message,
-			...(additionalInfo && { additionalInfo }),
-		}),
-	);
 };
 
 const getNoteProperties = (): NoteProperties => {
@@ -61,19 +45,15 @@ const getNoteProperties = (): NoteProperties => {
 	};
 };
 
-const checkNoteExists = async (title: string): Promise<boolean> => {
+const checkNoteExists = async (
+	context: Context,
+	title: string,
+): Promise<boolean> => {
 	try {
-		const response = await notion.databases.query({
-			database_id: notionConfig.databaseId,
-			filter: {
-				property: "Name",
-				title: {
-					equals: title,
-				},
-			},
+		return await queryDatabase(context.notion, context.config.databaseId, {
+			property: "Name",
+			title: { equals: title },
 		});
-
-		return response.results.length > 0;
 	} catch (error) {
 		structuredLog("error", "Error checking note existence", { error });
 		throw error;
@@ -81,96 +61,80 @@ const checkNoteExists = async (title: string): Promise<boolean> => {
 };
 
 const createDailyNote = async (
+	context: Context,
 	note: NoteProperties,
-	traceId: string,
 ): Promise<void> => {
 	try {
-		await notion.pages.create({
-			parent: {
-				database_id: notionConfig.databaseId,
-			},
-			properties: {
-				Name: {
-					title: [
-						{
-							text: {
-								content: note.name,
-							},
-						},
-					],
-				},
-				Date: {
-					type: "date",
-					date: {
-						start: note.date,
-						end: null,
-					},
-				},
-			},
-		});
+		await createPage(context.notion, context.config.databaseId, note);
 		structuredLog(
 			"info",
 			`Created successfully: ${note.name}`,
 			undefined,
-			traceId,
+			context.traceId,
 		);
 	} catch (error) {
-		structuredLog("error", "Error creating daily note:", { error }, traceId);
+		structuredLog(
+			"error",
+			`Error creating daily note: ${note.name}`,
+			{ error },
+			context.traceId,
+		);
 		throw error;
 	}
 };
 
-const validateEnv = (): void => {
-	if (!process.env.NOTION_API_KEY) {
-		throw new Error("Missing environment variable: NOTION_API_KEY");
-	}
-	if (!process.env.DATABASE_ID) {
-		throw new Error("Missing environment variable: DATABASE_ID");
-	}
-	if (!process.env.AWS_REGION) {
-		throw new Error("Missing environment variable: AWS_REGION");
-	}
-	if (!process.env.AWS_ACCESS_KEY_ID) {
-		throw new Error("Missing environment variable: AWS_ACCESS_KEY_ID");
-	}
-	if (!process.env.AWS_SECRET_ACCESS_KEY) {
-		throw new Error("Missing environment variable: AWS_SECRET_ACCESS_KEY");
-	}
-};
-
-const executeDailyNoteCreation = async (traceId: string): Promise<void> => {
+const executeDailyNoteCreation = async (context: Context): Promise<void> => {
 	const note = getNoteProperties();
-	const exists = await checkNoteExists(note.name);
+	const exists = await checkNoteExists(context, note.name);
 
 	if (exists) {
 		structuredLog(
 			"info",
 			`Note already exists: ${note.name}`,
 			undefined,
-			traceId,
+			context.traceId,
 		);
 		return;
 	}
 
-	await createDailyNote(note, traceId);
+	await createDailyNote(context, note);
 };
 
-const main = async (traceId: string): Promise<void> => {
-	validateEnv();
-	await executeDailyNoteCreation(traceId);
+const initialize = (): void => {
+	validateEnv([
+		"NOTION_API_KEY",
+		"DATABASE_ID",
+		"AWS_REGION",
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+	]);
 };
 
-const run = async (traceId: string): Promise<void> => {
-	main(traceId)
+const processDailyNote = async (context: Context): Promise<void> => {
+	await executeDailyNoteCreation(context);
+};
+
+const main = async (context: Context): Promise<void> => {
+	initialize();
+	await processDailyNote(context);
+};
+
+const run = async (context: Context): Promise<void> => {
+	main(context)
 		.then(() =>
-			structuredLog("info", "Main process completed", undefined, traceId),
+			structuredLog(
+				"info",
+				"Main process completed",
+				undefined,
+				context.traceId,
+			),
 		)
 		.catch((error) => {
 			structuredLog(
 				"error",
 				"Main process execution error:",
 				{ error },
-				traceId,
+				context.traceId,
 			);
 			process.exit(1);
 		});
@@ -180,22 +144,30 @@ const run = async (traceId: string): Promise<void> => {
  * ローカル実行用
  */
 if (require.main === module) {
-	const traceId = generateTraceId();
-	run(traceId);
+	const context = {
+		traceId: generateTraceId(),
+		notion: createNotionClient(notionConfig),
+		config: notionConfig,
+	};
+	run(context);
 }
 
 /**
  * Lambda関数ハンドラー
  */
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
-	const traceId = generateTraceId();
+	const context = {
+		traceId: generateTraceId(),
+		notion: createNotionClient(notionConfig),
+		config: notionConfig,
+	};
 	try {
-		await main(traceId);
+		await main(context);
 		structuredLog(
 			"info",
 			"Lambda function executed successfully",
 			undefined,
-			traceId,
+			context.traceId,
 		);
 		return {
 			statusCode: 200,
@@ -206,7 +178,7 @@ export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
 			"error",
 			"Lambda function execution error:",
 			{ error },
-			traceId,
+			context.traceId,
 		);
 		return {
 			statusCode: 500,

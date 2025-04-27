@@ -1,3 +1,6 @@
+import type { Client } from "@notionhq/client";
+import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+
 // NotionClientの環境変数の型
 export interface NotionConfig {
 	apiKey: string;
@@ -26,4 +29,11 @@ export interface LambdaResponse {
 export interface NoteProperties {
 	name: string;
 	date: string;
+	properties?: PageObjectResponse["properties"];
+}
+
+export interface Context {
+	traceId: string;
+	notion: Client;
+	config: NotionConfig;
 }
