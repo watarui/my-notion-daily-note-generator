@@ -16,20 +16,15 @@ provider "aws" {
   region = var.aws_region
 }
 
-# ランダムな文字列を生成（リソース名の一意性確保のため）
-resource "random_id" "unique_suffix" {
-  byte_length = 4
-}
-
 # CloudWatch Logsのロググループ
 resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${var.project_name}-${random_id.unique_suffix.hex}"
+  name              = "/aws/lambda/${var.project_name}"
   retention_in_days = 14
 }
 
 # Lambda用のIAMロール
 resource "aws_iam_role" "lambda_role" {
-  name = "${var.project_name}-role-${random_id.unique_suffix.hex}"
+  name = "${var.project_name}-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -47,7 +42,7 @@ resource "aws_iam_role" "lambda_role" {
 
 # Lambda用のIAMポリシー
 resource "aws_iam_policy" "lambda_policy" {
-  name = "${var.project_name}-policy-${random_id.unique_suffix.hex}"
+  name = "${var.project_name}-policy"
   path = "/"
 
   policy = jsonencode({
@@ -95,7 +90,7 @@ resource "null_resource" "build_lambda" {
 
 # Lambda関数
 resource "aws_lambda_function" "notion_daily_generator" {
-  function_name    = "${var.project_name}-${random_id.unique_suffix.hex}"
+  function_name    = var.project_name
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
   runtime          = "nodejs20.x"
@@ -120,7 +115,7 @@ resource "aws_lambda_function" "notion_daily_generator" {
 
 # EventBridgeルール
 resource "aws_cloudwatch_event_rule" "schedule" {
-  name                = "${var.project_name}-schedule-${random_id.unique_suffix.hex}"
+  name                = "${var.project_name}-schedule"
   description         = "Schedule for Notion Daily Generator"
   schedule_expression = var.schedule_expression
 }
