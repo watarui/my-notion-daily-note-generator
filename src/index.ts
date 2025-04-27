@@ -29,7 +29,7 @@ const createNotionClient = (config: NotionConfig): Client => {
 const notion = createNotionClient(notionConfig);
 
 const generateTraceId = (): string => {
-	return uuidv4();
+	return uuidv4().replace(/-/g, "");
 };
 
 const structuredLog = (
