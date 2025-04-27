@@ -114,7 +114,7 @@ const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
 				},
 			},
 		});
-		log("info", `作成成功: ${dateFormats.yyyyMMddDdd}`);
+		log("info", `Created successfully: ${dateFormats.yyyyMMddDdd}`);
 	} catch (error) {
 		log("error", "Error creating daily note:", { error });
 		throw error;
@@ -139,7 +139,7 @@ const main = async (): Promise<void> => {
 	const exists = await checkNoteExists(dateFormats.yyyyMMddDdd);
 
 	if (exists) {
-		log("info", `すでに存在しています: ${dateFormats.yyyyMMddDdd}`);
+		log("info", `Already exists: ${dateFormats.yyyyMMddDdd}`);
 		return;
 	}
 
@@ -151,9 +151,9 @@ const main = async (): Promise<void> => {
  * ローカル実行用
  */
 main()
-	.then(() => console.log("処理完了"))
+	.then(() => log("info", "Main process completed"))
 	.catch((error) => {
-		log("error", "メイン処理エラー:", { error });
+		log("error", "Main process execution error:", { error });
 		process.exit(1);
 	});
 
@@ -163,15 +163,16 @@ main()
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
 	try {
 		await main();
+		log("info", "Lambda function executed successfully");
 		return {
 			statusCode: 200,
-			body: JSON.stringify({ message: "デイリーノート作成成功" }),
+			body: JSON.stringify({ message: "Daily note created successfully" }),
 		};
 	} catch (error) {
-		log("error", "Lambda実行エラー:", { error });
+		log("error", "Lambda function execution error:", { error });
 		return {
 			statusCode: 500,
-			body: JSON.stringify({ error: "デイリーノート作成失敗" }),
+			body: JSON.stringify({ error: "Daily note creation failed" }),
 		};
 	}
 }
