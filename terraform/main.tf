@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state-for-my-notion-daily-generator"
+    bucket         = "my-terraform-state-for-my-notion-daily-note-generator"
     key            = "my-notion-daily-note-generator/terraform.tfstate"
     region         = "ap-northeast-1"
     dynamodb_table = "terraform-locks"
@@ -87,7 +87,7 @@ data "archive_file" "lambda_package" {
 # Lambda関数のビルド
 resource "null_resource" "build_lambda" {
   triggers = {
-    source_hash = filesha256("${path.module}/../src")
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
