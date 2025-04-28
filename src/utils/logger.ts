@@ -1,5 +1,5 @@
 export const structuredLog = (
-	level: "info" | "error" | "warn",
+	level: "debug" | "info" | "error" | "warn",
 	message: string,
 	additionalInfo?: Record<string, unknown>,
 	traceId?: string,
