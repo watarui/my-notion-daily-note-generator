@@ -119,7 +119,7 @@ const main = async (context: Context): Promise<void> => {
 	await processDailyNote(context);
 };
 
-const run = async (context: Context): Promise<void> => {
+const runOnLocal = async (context: Context): Promise<void> => {
 	main(context)
 		.then(() =>
 			structuredLog(
@@ -140,27 +140,16 @@ const run = async (context: Context): Promise<void> => {
 		});
 };
 
-/**
- * ローカル実行用
- */
 if (require.main === module) {
 	const context = {
 		traceId: generateTraceId(),
 		notion: createNotionClient(notionConfig),
 		config: notionConfig,
 	};
-	run(context);
+	runOnLocal(context);
 }
 
-/**
- * Lambda関数ハンドラー
- */
-export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
-	const context = {
-		traceId: generateTraceId(),
-		notion: createNotionClient(notionConfig),
-		config: notionConfig,
-	};
+const runOnLambda = async (context: Context): Promise<LambdaResponse> => {
 	try {
 		await main(context);
 		structuredLog(
@@ -185,6 +174,15 @@ export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
 			body: JSON.stringify({ error: "Daily note creation failed" }),
 		};
 	}
+};
+
+export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
+	const context = {
+		traceId: generateTraceId(),
+		notion: createNotionClient(notionConfig),
+		config: notionConfig,
+	};
+	return runOnLambda(context);
 }
 
 export { main }; // テスト用にエクスポート
