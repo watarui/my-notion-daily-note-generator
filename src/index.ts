@@ -119,69 +119,57 @@ const main = async (context: Context): Promise<void> => {
 	await processDailyNote(context);
 };
 
-const runOnLocal = async (context: Context): Promise<void> => {
-	main(context)
-		.then(() =>
-			structuredLog(
-				"info",
-				"Main process completed",
-				undefined,
-				context.traceId,
-			),
-		)
-		.catch((error) => {
-			structuredLog(
-				"error",
-				"Main process execution error:",
-				{ error },
-				context.traceId,
-			);
-			process.exit(1);
-		});
-};
-
-if (require.main === module) {
-	const context = {
-		traceId: generateTraceId(),
-		notion: createNotionClient(notionConfig),
-		config: notionConfig,
-	};
-	runOnLocal(context);
-}
-
-const runOnLambda = async (context: Context): Promise<LambdaResponse> => {
+const executeWithLogging = async (
+	context: Context,
+	execution: () => Promise<void>,
+): Promise<LambdaResponse | undefined> => {
 	try {
-		await main(context);
+		await execution();
 		structuredLog(
 			"info",
-			"Lambda function executed successfully",
+			"Execution completed successfully",
 			undefined,
 			context.traceId,
 		);
 		return {
 			statusCode: 200,
-			body: JSON.stringify({ message: "Daily note created successfully" }),
+			body: JSON.stringify({ message: "Execution completed successfully" }),
 		};
 	} catch (error) {
-		structuredLog(
-			"error",
-			"Lambda function execution error:",
-			{ error },
-			context.traceId,
-		);
+		structuredLog("error", "Execution error:", { error }, context.traceId);
+		if (process.env.NODE_ENV === "local") {
+			process.exit(1);
+		}
 		return {
 			statusCode: 500,
-			body: JSON.stringify({ error: "Daily note creation failed" }),
+			body: JSON.stringify({ error: "Execution failed" }),
 		};
 	}
 };
 
+const runOnLocal = async (context: Context): Promise<void> => {
+	await executeWithLogging(context, () => main(context));
+};
+
+const runOnLambda = async (context: Context): Promise<LambdaResponse> => {
+	return executeWithLogging(context, () =>
+		main(context),
+	) as Promise<LambdaResponse>;
+};
+
+const createContext = (): Context => ({
+	traceId: generateTraceId(),
+	notion: createNotionClient(notionConfig),
+	config: notionConfig,
+});
+
+if (require.main === module) {
+	const context = createContext();
+	runOnLocal(context);
+}
+
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
-	const context = {
-		traceId: generateTraceId(),
-		notion: createNotionClient(notionConfig),
-		config: notionConfig,
-	};
+	const context = createContext();
 	return runOnLambda(context);
 }
 
