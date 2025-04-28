@@ -82,8 +82,7 @@ export const createDailyNote = async (
 	}
 };
 
-const executeDailyNoteCreation = async (context: Context): Promise<void> => {
-	const note = getNoteProperties();
+const executeDailyNoteCreation = async (context: Context, note: NoteProperties): Promise<void> => {
 	const exists = await checkNoteExists(context, note.name);
 
 	if (exists) {
@@ -113,7 +112,8 @@ const initialize = (env: NodeJS.ProcessEnv): void => {
 };
 
 const processDailyNote = async (context: Context): Promise<void> => {
-	await executeDailyNoteCreation(context);
+	const note = getNoteProperties();
+	await executeDailyNoteCreation(context,note);
 };
 
 const main = async (context: Context): Promise<void> => {
@@ -159,19 +159,19 @@ const runOnLambda = async (context: Context): Promise<LambdaResponse> => {
 	) as Promise<LambdaResponse>;
 };
 
-const createContext = (): Context => ({
+const createContext = (config: NotionConfig): Context => ({
 	traceId: generateTraceId(),
-	notion: createNotionClient(notionConfig),
-	config: notionConfig,
+	notion: createNotionClient(config),
+	config: config,
 });
 
 if (require.main === module) {
-	const context = createContext();
+	const context = createContext(notionConfig);
 	runOnLocal(context);
 }
 
 export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
-	const context = createContext();
+	const context = createContext(notionConfig);
 	return runOnLambda(context);
 }
 
