@@ -2,178 +2,177 @@ import { Client } from "@notionhq/client";
 import { isValid } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 import type {
-	DateFormats,
+	Context,
 	LambdaResponse,
+	NoteProperties,
 	NotionConfig,
 	ScheduledEvent,
 } from "./types";
+import { getEnv, validateEnv } from "./utils/env";
+import { structuredLog } from "./utils/logger";
+import { createPage, queryDatabase } from "./utils/notion";
 
 // 開発環境では.envファイルから環境変数を読み込む
-if (process.env.NODE_ENV !== "production") {
+if (getEnv("NODE_ENV") !== "production") {
 	config();
 }
 
-// Notionの設定
 const notionConfig: NotionConfig = {
-	apiKey: process.env.NOTION_API_KEY ?? "",
-	databaseId: process.env.DATABASE_ID ?? "",
+	apiKey: getEnv("NOTION_API_KEY"),
+	databaseId: getEnv("DATABASE_ID"),
 };
 
-// Notionクライアントの初期化
-const notion = new Client({ auth: notionConfig.apiKey });
-
-/**
- * 構造化ログを出力する
- * @param level ログレベル (info, error, warn)
- * @param message ログメッセージ
- * @param meta 追加情報 (オプション)
- */
-const log = (
-	level: "info" | "error" | "warn",
-	message: string,
-	meta?: Record<string, unknown>,
-) => {
-	console.log(
-		JSON.stringify({
-			timestamp: new Date().toISOString(),
-			level,
-			message,
-			...(meta && { meta }),
-		}),
-	);
+const createNotionClient = (config: NotionConfig): Client => {
+	return new Client({ auth: config.apiKey });
 };
 
-/**
- * 日本時間の現在の日付フォーマットを取得する
- * @returns フォーマット済みの日付
- */
-const getJapanDateFormats = (): DateFormats => {
+const generateTraceId = (): string => {
+	return uuidv4().replace(/-/g, "");
+};
+
+const getNoteProperties = (): NoteProperties => {
 	const now = new Date();
 	if (!isValid(now)) {
 		throw new Error("Invalid date");
 	}
 
 	return {
-		yyyyMMdd: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd"),
-		yyyyMMddDdd: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd EEE"),
+		name: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd EEE"),
+		date: formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd"),
 	};
 };
 
-/**
- * Notionにデイリーノートが存在するか確認
- * @param title ノートのタイトル
- * @returns 存在するかどうか
- */
-const checkNoteExists = async (title: string): Promise<boolean> => {
+export const checkNoteExists = async (
+	context: Context,
+	title: string,
+): Promise<boolean> => {
 	try {
-		const response = await notion.databases.query({
-			database_id: notionConfig.databaseId,
-			filter: {
-				property: "Name",
-				title: {
-					equals: title,
-				},
-			},
+		return await queryDatabase(context.notion, context.config.databaseId, {
+			property: "Name",
+			title: { equals: title },
 		});
-
-		return response.results.length > 0;
 	} catch (error) {
-		log("error", "Error checking note existence", { error });
+		structuredLog("error", "Error checking note existence", { error });
 		throw error;
 	}
 };
 
-/**
- * Notionにデイリーノートを作成
- * @param dateFormats 日付フォーマット
- * @returns 作成結果
- */
-const createDailyNote = async (dateFormats: DateFormats): Promise<void> => {
+export const createDailyNote = async (
+	context: Context,
+	note: NoteProperties,
+): Promise<void> => {
 	try {
-		await notion.pages.create({
-			parent: {
-				database_id: notionConfig.databaseId,
-			},
-			properties: {
-				Name: {
-					title: [
-						{
-							text: {
-								content: dateFormats.yyyyMMddDdd,
-							},
-						},
-					],
-				},
-				Date: {
-					type: "date",
-					date: {
-						start: dateFormats.yyyyMMdd,
-						end: null,
-					},
-				},
-			},
-		});
-		log("info", `作成成功: ${dateFormats.yyyyMMddDdd}`);
-	} catch (error) {
-		log("error", "Error creating daily note:", { error });
-		throw error;
-	}
-};
-
-/**
- * メイン処理
- */
-const main = async (): Promise<void> => {
-	// 設定のバリデーション
-	if (!notionConfig.apiKey || !notionConfig.databaseId) {
-		throw new Error(
-			"Missing required environment variables: NOTION_API_KEY or DATABASE_ID",
+		await createPage(context.notion, context.config.databaseId, note);
+		structuredLog(
+			"info",
+			`Created successfully: ${note.name}`,
+			undefined,
+			context.traceId,
 		);
+	} catch (error) {
+		structuredLog(
+			"error",
+			`Error creating daily note: ${note.name}`,
+			{ error },
+			context.traceId,
+		);
+		throw error;
 	}
+};
 
-	// 日付フォーマットの取得
-	const dateFormats = getJapanDateFormats();
-
-	// すでに存在するかチェック
-	const exists = await checkNoteExists(dateFormats.yyyyMMddDdd);
+const executeDailyNoteCreation = async (context: Context): Promise<void> => {
+	const note = getNoteProperties();
+	const exists = await checkNoteExists(context, note.name);
 
 	if (exists) {
-		log("info", `すでに存在しています: ${dateFormats.yyyyMMddDdd}`);
+		structuredLog(
+			"info",
+			`Note already exists: ${note.name}`,
+			undefined,
+			context.traceId,
+		);
 		return;
 	}
 
-	// 作成処理
-	await createDailyNote(dateFormats);
+	await createDailyNote(context, note);
 };
 
-/**
- * ローカル実行用
- */
-main()
-	.then(() => console.log("処理完了"))
-	.catch((error) => {
-		log("error", "メイン処理エラー:", { error });
-		process.exit(1);
-	});
+const initialize = (env: NodeJS.ProcessEnv): void => {
+	validateEnv(
+		[
+			"NOTION_API_KEY",
+			"DATABASE_ID",
+			"AWS_REGION",
+			"AWS_ACCESS_KEY_ID",
+			"AWS_SECRET_ACCESS_KEY",
+		],
+		env,
+	);
+};
 
-/**
- * Lambda関数ハンドラー
- */
-export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
+const processDailyNote = async (context: Context): Promise<void> => {
+	await executeDailyNoteCreation(context);
+};
+
+const main = async (context: Context): Promise<void> => {
+	initialize(process.env);
+	await processDailyNote(context);
+};
+
+const executeWithLogging = async (
+	context: Context,
+	execution: () => Promise<void>,
+): Promise<LambdaResponse | undefined> => {
 	try {
-		await main();
+		await execution();
+		structuredLog(
+			"info",
+			"Execution completed successfully",
+			undefined,
+			context.traceId,
+		);
 		return {
 			statusCode: 200,
-			body: JSON.stringify({ message: "デイリーノート作成成功" }),
+			body: JSON.stringify({ message: "Execution completed successfully" }),
 		};
 	} catch (error) {
-		log("error", "Lambda実行エラー:", { error });
+		structuredLog("error", "Execution error:", { error }, context.traceId);
+		if (process.env.NODE_ENV === "local") {
+			process.exit(1);
+		}
 		return {
 			statusCode: 500,
-			body: JSON.stringify({ error: "デイリーノート作成失敗" }),
+			body: JSON.stringify({ error: "Execution failed" }),
 		};
 	}
+};
+
+const runOnLocal = async (context: Context): Promise<void> => {
+	await executeWithLogging(context, () => main(context));
+};
+
+const runOnLambda = async (context: Context): Promise<LambdaResponse> => {
+	return executeWithLogging(context, () =>
+		main(context),
+	) as Promise<LambdaResponse>;
+};
+
+const createContext = (): Context => ({
+	traceId: generateTraceId(),
+	notion: createNotionClient(notionConfig),
+	config: notionConfig,
+});
+
+if (require.main === module) {
+	const context = createContext();
+	runOnLocal(context);
+}
+
+export async function handler(event: ScheduledEvent): Promise<LambdaResponse> {
+	const context = createContext();
+	return runOnLambda(context);
 }
 
 export { main }; // テスト用にエクスポート
