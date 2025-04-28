@@ -19,7 +19,6 @@ if (getEnv("NODE_ENV") !== "production") {
 	config();
 }
 
-// Notionの設定
 const notionConfig: NotionConfig = {
 	apiKey: getEnv("NOTION_API_KEY"),
 	databaseId: getEnv("DATABASE_ID"),
@@ -100,14 +99,17 @@ const executeDailyNoteCreation = async (context: Context): Promise<void> => {
 	await createDailyNote(context, note);
 };
 
-const initialize = (): void => {
-	validateEnv([
-		"NOTION_API_KEY",
-		"DATABASE_ID",
-		"AWS_REGION",
-		"AWS_ACCESS_KEY_ID",
-		"AWS_SECRET_ACCESS_KEY",
-	]);
+const initialize = (env: NodeJS.ProcessEnv): void => {
+	validateEnv(
+		[
+			"NOTION_API_KEY",
+			"DATABASE_ID",
+			"AWS_REGION",
+			"AWS_ACCESS_KEY_ID",
+			"AWS_SECRET_ACCESS_KEY",
+		],
+		env,
+	);
 };
 
 const processDailyNote = async (context: Context): Promise<void> => {
@@ -115,7 +117,7 @@ const processDailyNote = async (context: Context): Promise<void> => {
 };
 
 const main = async (context: Context): Promise<void> => {
-	initialize();
+	initialize(process.env);
 	await processDailyNote(context);
 };
 
