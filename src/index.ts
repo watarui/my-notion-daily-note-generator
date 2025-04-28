@@ -44,7 +44,7 @@ const getNoteProperties = (): NoteProperties => {
 	};
 };
 
-const checkNoteExists = async (
+export const checkNoteExists = async (
 	context: Context,
 	title: string,
 ): Promise<boolean> => {
@@ -59,7 +59,7 @@ const checkNoteExists = async (
 	}
 };
 
-const createDailyNote = async (
+export const createDailyNote = async (
 	context: Context,
 	note: NoteProperties,
 ): Promise<void> => {
