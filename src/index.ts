@@ -118,7 +118,8 @@ const processDailyNote = async (context: Context): Promise<void> => {
 
 const main = async (context: Context): Promise<void> => {
 	initialize(process.env);
-	structuredLog("debug", `DATABASE_ID: ${context.config.databaseId}`);
+	structuredLog("debug", `DATABASE_ID 1: ${process.env.DATABASE_ID}`);
+	structuredLog("debug", `DATABASE_ID 2: ${context.config.databaseId}`);
 	await processDailyNote(context);
 };
 
